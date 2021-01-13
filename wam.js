@@ -2,7 +2,7 @@
 (function(){
 
 var exports = {
-    parse, reset, dump, prog: compileP0, query: query0
+    parse, reset, dump, prog: compileP0, query: query0, exec: exec0
 }
 
 if(typeof module !== "undefined"){
@@ -16,8 +16,11 @@ if(typeof module !== "undefined"){
 }
 
 var Store = new Array(1024) // simulates main memory
-var X = new Array(128) // registers (contain indices into Store)
-var Xn = 0
+const Xbot = 1
+var X // register ptr
+const Xtop = 128, Cbot = Xtop
+var C // code ptr
+const Ctop = Xtop+128, Hbot = Ctop
 var H // heap ptr
 var ModeRd // true=read false=write
 var S // address of next subterm to be matched
@@ -25,70 +28,133 @@ var Labels = {}
 var P // instruction counter
 reset()
 
+var Ftbl = {}, Fn = 0 // functor table
+
+/* Heap tags */
+const REF = 1, STR = 2, FUN = 3
+
+/* Instruction tags */
+const PUT_STRUCT=8, SET_VAR=9, SET_VAL=10, GET_STRUCT=11, UNI_VAR=12,
+    UNI_VAL=13
+
 function reset(){
-    Store.fill(undefined), H = 0, X.fill(undefined), Xn = 0, ModeRd = true, S = H,
-    Labels = {}, P = H
+    Store.fill(undefined, Xbot, X)
+    Store.fill(undefined, Cbot, C)
+    Store.fill(undefined, Hbot, H)
+    Ftbl = {}, Fn = 0,  X = Xbot, C = Cbot, H = Hbot, S = H, Labels = {}
+    S = H, P = C
 }
 
 function resetRegs(){
-    X.fill(0, Xn, undefined), Xn = 0
+    Store.fill(undefined, Xbot, X)
+    X = Xbot
 }
 
 function dump(){
     var i
-    console.log("==+-REGISTERS-+==")
-    if(Xn == 0) console.log("(empty)")
-    for(i=0; i<Xn; i++) console.log(i, X[i].toString())
+    //if(X == 0) console.log("(empty)")
+    var Frev = []
+    for(i=0;i<Fn;i++){
+        for(var f in Ftbl) if(Ftbl[f] == i){ Frev.push(f); break }
+    }
+    if(X == 0 && H == Hbot) console.log("(empty)")
+    //for(i=0; i<X; i++) console.log(i, dumpStr(Store[i], Frev))
+    for(i=Cbot; i<C; i++) console.log(i, dumpStr(Store[i], Frev))
+    for(i=Hbot; i<H; i++) console.log(i, dumpStr(Store[i], Frev))
 
-    console.log("\n==+-HEAP-+==")
-    if(H == 0) console.log("(empty)")
-    for(i=0; i<H; i++) console.log(i, Store[i].toString())
+    for(i=0;i<Frev.length;i++) console.log(i, Frev[i])
 }
 
-/* Use new Cell(...) in order to give hints to JS interp to optimize ... */
-const REF = 1, STR = 2, FUN = 3
+var tagNames = new Map([
+    [STR,"STR"],
+    [REF,"REF"],
+    [FUN,"FUN"],
+    [PUT_STRUCT,"PUT_STRUCT"],
+    [SET_VAR,"SET_VAR"],
+    [SET_VAL,"SET_VAL"],
+    [GET_STRUCT,"GET_STRUCT"],
+    [UNI_VAR,"UNI_VAR"],
+    [UNI_VAL,"UNI_VAL"]
+])
+
+function dumpStr(cell, F){
+    var str = tagNames.get(cell.tag) +" "+ cell.a
+    if(cell.b !== undefined) str += ", "+ cell.b
+    if(cell.tag == FUN) str += " ("+F[cell.a]+")"
+    return str
+}
+
+function findF(f, n){
+    var k = f+"/"+n
+    if(k in Ftbl){
+        return Ftbl[k]
+    }else{
+        return Ftbl[k] = Fn++
+    }
+}
+
+/* a simulated memory cell */
 function Cell(tag, a, b){
     if(typeof tag != "number"){ throw new Error("invalid tag") }
-    this.tag = tag, this.a = a, this.b = b // a or b may be undefined
+    this.tag=tag, this.a=a, this.b=b // a,b may be undefined
 }
 Cell.prototype.clone = function(){
     return new Cell(this.tag, this.a, this.b)
 }
-Cell.prototype.toString = function(){
-    var tag
-    switch(this.tag){
-    case STR: tag="STR"; break
-    case REF: tag="REF"; break
+
+function WamFail(){ Error("WAM failure") }
+WamFail.prototype = Object.create({}, Error.prototype)
+
+/* M0 INTERPRETER */
+
+function exec0(){
+    var H0 = H
+    try{
+        for(var i=Cbot; i<C; i++){
+            var f = M0.get(Store[i].tag)
+            f(Store[i].a, Store[i].b)
+        }
+        return true
+    }catch(err){
+        if(err instanceof WamFail){
+            return false
+        }else{
+            throw(err)
+        }
+    }finally{
+        //H = H0
     }
-    return (this.tag === FUN ? this.a+"/"+this.b : tag+" "+this.a)
 }
 
-function WamFail(){ Error.call(this, "WAM failure") }
-WamFail.prototype = Object.assign({}, Error.prototype)
+var M0 = new Map([
+    /* Query instructions */
+    [PUT_STRUCT, put_structure],
+    [SET_VAR, set_variable],
+    [SET_VAL, set_value],
+    /* Program instructions */
+    [GET_STRUCT, get_structure],
+    [UNI_VAR, unify_variable],
+    [UNI_VAL, unify_value]
+])
 
-/* M0 MACHINE */
-var M0 = {put_structure, set_variable, set_value}
-
-/* Query instructions */
-function put_structure(f, n, Xi){
-    X[Xi] = Store[H] = new Cell(STR, H+1)
-    Store[H+1] = new Cell(FUN, f, n)
+function put_structure(fi, Xi){
+    Store[Xi] = Store[H] = new Cell(STR, H+1)
+    Store[H+1] = new Cell(FUN, fi)
     H+=2
 }
 
 function set_variable(Xi){
-    X[Xi] = Store[H] = new Cell(REF, H), H++
+    Store[Xi] = Store[H] = new Cell(REF, H), H++
 }
 
 function set_value(Xi){
-    Store[H++] = X[Xi].clone()
+    Store[H++] = Store[Xi].clone()
 }
 
-/* Program instructions */
-function get_structure(f, n, Xi){
-    if(!ModeRd) return put_structure(f, n, Xi)
+function get_structure(fi, Xi){
+    if(!ReadMode) return put_structure(fi, Xi)
 
-    var addr = deref(X[Xi].a)
+    var addr = deref(Store[Xi].a)
     var cell = Store[addr]
     switch(cell.tag){
     case REF:
@@ -96,13 +162,12 @@ function get_structure(f, n, Xi){
         Store[H+1] = new Cell(FUN, f, n)
         bind(addr, H)
         H+=2
-        ModeRd = false
-        break
+        ReadMode = false
     case STR:
         var a = cell.a
-        if(Store[a].a === f && Store[a].b === n){
+        if(Store[a].a == fi){
             S = a+1
-            ModeRd = true
+            ReadMode = true
         }else{
             throw new WamFail()
         }
@@ -110,20 +175,20 @@ function get_structure(f, n, Xi){
 }
 
 function unify_variable(Xi){
-    if(ModeRd){
-        X[Xi] = Store[S]
+    if(ReadMode){
+        Store[Xi] = Store[S]
     }else{
-        X[Xi] = Store[H] = new Cell(REF, H)
+        Store[Xi] = Store[H] = new Cell(REF, H)
         H++
     }
     S++
 }
 
 function unify_value(Xi){
-    if(ModeRd){
+    if(ReadMode){
         unify(Xi, S++)
     }else{
-        Store[H++] = X[Xi].clone()
+        Store[H++] = Store[Xi].clone()
     }
 }
 
@@ -141,58 +206,90 @@ function bind(i, j){
 
 function compileQ0(s){
     resetRegs()
-    ModeRd = false
-    return compileQ0_(parse(s), {})
+    var expr = parse(s)
+    return compileQ0_(expr, flatten(expr))
 }
 
-function compileQ0_(expr, seen){
-    var k = exprK(expr)
-    if(k in seen){
-        set_value(seen[k])
-    }else if(expr.struct){
-        var Xi = Xn++
-        for(var i=0; i<expr.n; i++){
-            if(expr.args[i].struct) compileQ0_(expr.args[i], seen)
+/* Flatten expressions into registers of cells.
+ *
+ * Registers are in the same order for both query and program compilation.
+ * Registers are assigned by walking the expression tree in a breadth-first
+ * fashion.
+ */
+function flatten(expr){
+    var reg = {}, Q = [expr]
+
+    while(Q.length){
+        var e = Q.shift(), k = exprK(e)
+        if(reg[k]){
+            //console.log("k="+k)
+            continue
+        }else if(e.struct){
+            reg[k] = X++
+            e.args.forEach(term => {console.log("term:",term); Q.push(term)})
+        }else{
+            reg[k] = X++
         }
-        seen[k] = Xi
-        put_structure(expr.atom, expr.n, Xi)
+    }
+    console.log(reg, Ftbl)
+    return reg // ignored except for the top-level flatten
+}
+
+function compileQ0_(expr, regs, seen){
+    if(!seen) return compileQ0_(expr, regs, {}) // top-level call
+
+    var Xi = regs[exprK(expr)]
+    if(Xi === undefined) throw new Error("insane")
+    if(seen[Xi]){
+        Store[C++] = new Cell(SET_VAL, Xi)
+    }else if(expr.struct){
+        var fi = findF(expr.atom, expr.n)
+        seen[Xi] = true
+
+        /* Queries place any structure-terms before this structure. */
+        for(var i=0; i<expr.n; i++){
+            if(expr.args[i].struct){
+                compileQ0_(expr.args[i], seen, regs)
+            }
+        }
+        Store[C++] = new Cell(PUT_STRUCT, fi, Xi)
         for(var i=0; i<expr.n; i++){
             compileQ0_(expr.args[i], seen)
         }
     }else{
-        set_variable(Xn)
-        seen[k] = Xn++
+        Store[C++] = new Cell(SET_VAR, Xi)
+        seen[Xi] = true
     }
 }
 
 function compileP0(s){
-    // XXX: do we reset registers?
-    ModeRd = false
     return compileP0_(parse(s), {})
 }
 
 function compileP0_(expr, seen){
     var k = exprK(expr)
     if(k in seen){
-        unify_value(seen[k])
+        Store[C++] = new Cell(UNI_VAL, seen[k])
     }else if(expr.struct){
-        var Xi = Xn++
+        var Xi = X++
+        var fi = findF(expr.atom, expr.n)
         seen[k] = Xi
-        get_structure(expr.atom, expr.n, Xi)
+        Store[C++] = new Cell(GET_STRUCT, fi, Xi)
+        /* Programs place any structure-terms after this structure. */
         for(var i=0; i<expr.n; i++){
             compileQ0_(expr.args[i], seen)
         }
     }else{
-        unify_variable(Xn)
-        seen[k] = Xn++
+        Store[C++] = new Cell(UNI_VAR, X)
+        seen[k] = X++
     }
 }
 
 function query0(s){
+    var H_ = H
     try{
         compileQ0(s)
-        ModeRd = true
-        compileP0
+        S = Hbot
         return true
     }catch(err){
         if(err instanceof WamFail){
@@ -200,6 +297,8 @@ function query0(s){
         }else{
             throw err
         }
+    }finally{
+        H = H_
     }
 }
 
@@ -232,8 +331,7 @@ function unify(i1, i2){
 
         /* unify both structures */
         if(cell1.tag != STR || cell2.tag != STR){
-            // sanity check
-            throw new Error("insane")
+            throw new Error("insane") // sanity check
         }
         var fn1 = Store[cell1.a], fn2 = Store[cell2.a]
         if(fn1.a === fn2.a && fn1.b === fn2.b){
@@ -273,8 +371,7 @@ function tok(S0){
     }else if(m[3]){
         S.next = m[3]
     }else if(m[4]){
-        // skip whitespace
-        return tok(S)
+        return tok(S) // skip whitespace
     }else if(m[5]){
         S.next = "endl"
     }else{
@@ -285,7 +382,7 @@ function tok(S0){
 
 /* PARSER */
 function parseArgs(S){
-    var A = [], X
+    var A = [], B
 
     while(true){
         switch(S.next){
@@ -294,9 +391,9 @@ function parseArgs(S){
         case "(": case null: case "endl": case "unk": case ",":
             throw new Error("syntax error at "+S.i)
         }
-        X = parse2(S)
-        A.push(X[0])
-        S = X[1]
+        B = parse2(S)
+        A.push(B[0])
+        S = B[1]
 
         // skip a single comma if it is the next token
         if(S.next === ","){
@@ -320,9 +417,9 @@ function parse2(S0){
     var S = tok(S0)
     if(S0.next.atom){
         if(S.next === "("){
-            var X = parseArgs(tok(S)) // skip open paren
-            S = X[1]
-            return [{struct:true, atom:S0.next.atom, n:X[0].length, args:X[0]}, S]
+            var A = parseArgs(tok(S)) // skip open paren
+            S = A[1]
+            return [{struct:true, atom:S0.next.atom, n:A[0].length, args:A[0]}, S]
         }else{
             return [{struct:true, atom:S0.next.atom, n:0, args:[]}, S]
         }
@@ -332,20 +429,18 @@ function parse2(S0){
 
 function parse(str){
     var S = tok({str:str, nexti:0}) // lookahead one token
-    var X = parse2(S)
-    if(X[1].next !== null){
-        console.log(X[1])
-        throw new Error("input should end at "+X[1].nexti)
+    var A = parse2(S)
+    if(A[1].next !== null){
+        console.log(A[1])
+        throw new Error("input should end at "+A[1].nexti)
     }else{
-        return X[0]
+        return A[0]
     }
 }
 
 function exprK(expr){
-    if(expr.atom){
-        return "atom#"+expr.atom
-    }else if(expr.struct){
-        return "struct#"+expr.atom+"/"+expr.n
+    if(expr.struct){
+        return "fun#"+findF(expr.atom, expr.n)
     }else if(expr.var){
         return "var#"+expr.var
     }else{
