@@ -204,20 +204,56 @@ function bind(i, j){
 
 /* M0 COMPILER */
 
-function compileQ0(s){
+function compileQ0(str){
     resetRegs()
-    var expr = parse(s)
-    return compileQ0_(expr, flatten(expr))
+    var S = tok({str:str, nexti:0})
+    compileQ0_(S)
 }
 
-/* Flatten expressions into registers of cells.
+function die(msg){
+    throw new Error(msg)
+}
+
+/* Flatten a stream of tokens into registers of cells.
  *
  * Registers are in the same order for both query and program compilation.
  * Registers are assigned by walking the expression tree in a breadth-first
  * fashion.
  */
-function flatten(expr){
-    var reg = {}, Q = [expr]
+function compileQ0_(S){
+    var reg = {}, term, A = []
+    resetRegs()
+
+    switch(S.next){
+    case null: case "endl":
+        /* end of the string/line */
+        if(!X){
+            /* input was empty */
+            die("expected term")
+        }else{
+            return
+        }
+    case "ws":
+        die("insane")
+    case "unk":
+        throw new Error("unknown char at "+S0.i)
+    case "(": case ")":
+        throw new Error("syntax error at "+S0.i)
+    }
+
+    var S = tok(S0)
+    if(S0.next.atom){
+        if(S.next === "("){
+            var A = parseArgs(tok(S)) // skip open paren
+            S = A[1]
+            return [{struct:true, atom:S0.next.atom, n:A[0].length, args:A[0]}, S]
+        }else{
+            return [{struct:true, atom:S0.next.atom, n:0, args:[]}, S]
+        }
+    }
+    return [S0.next, S]
+}
+
 
     while(Q.length){
         var e = Q.shift(), k = exprK(e)
@@ -235,7 +271,7 @@ function flatten(expr){
     return reg // ignored except for the top-level flatten
 }
 
-function compileQ0_(expr, regs, seen){
+function compileQ0_old(expr, regs, seen){
     if(!seen) return compileQ0_(expr, regs, {}) // top-level call
 
     var Xi = regs[exprK(expr)]
