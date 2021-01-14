@@ -2,7 +2,8 @@
 (function(){
 
 var exports = {
-    parse, reset, dump, prog: compileP0, query: query0, exec: exec0
+    parse, reset, dump, prog: compileP0, query: parseQ,
+    exec: exec0, flatten
 }
 
 if(typeof module !== "undefined"){
@@ -206,12 +207,48 @@ function bind(i, j){
 
 function compileQ0(str){
     resetRegs()
-    var S = tok({str:str, nexti:0})
-    compileQ0_(S)
+    compileQ0_(tokenize(str))
+}
+
+function synerr(S){
+    die("syntax error: column "+S.nexti)
 }
 
 function die(msg){
     throw new Error(msg)
+}
+
+function parseQ(str){
+    return parseQ_(tokenize(str))
+}
+
+function pclose(S, A){
+    console.log("pclose")
+    var n = 0, i = S.nexti
+
+    S = next(S)
+    while(true){
+        console.log(JSON.stringify(S))
+        switch(S.peek){
+        case null: die("unclosed paren: col "+i)
+        case "(": n++; S = next(S); continue
+        case ")": case ",": synerr(S)
+        }
+
+        A.push(S.peek)
+
+        S = next(S)
+        switch(S.peek){
+        case ",": S = next(S); break
+        case ")": S = next(S); if(n == 0) return S; n--
+        }
+    }
+}
+
+function adv(S0, A){
+    var S = next(S0)
+    A.unshift(S.peek)
+    return S
 }
 
 /* Flatten a stream of tokens into registers of cells.
@@ -220,55 +257,28 @@ function die(msg){
  * Registers are assigned by walking the expression tree in a breadth-first
  * fashion.
  */
-function compileQ0_(S){
-    var reg = {}, term, A = []
+function flatten(str){
+    var S=tokenize(str)
+    var regs=[], tok, toks=[S.peek]
     resetRegs()
 
-    switch(S.next){
-    case null: case "endl":
-        /* end of the string/line */
-        if(!X){
-            /* input was empty */
-            die("expected term")
-        }else{
-            return
+    console.log("DBG",S)
+
+    while(tok = toks.shift()){
+        switch(tok){ case ",": case "(": case ")": synerr(S) }
+        regs.push(tok)
+        if(tok.atom){
+            /* "(" is only allowed after an atom */
+            S = adv(S, toks)
+            if(toks[0] === "("){
+                toks.shift()
+                S = pclose(S, toks)
+            }
         }
-    case "ws":
-        die("insane")
-    case "unk":
-        throw new Error("unknown char at "+S0.i)
-    case "(": case ")":
-        throw new Error("syntax error at "+S0.i)
+        S = adv(S, toks)
     }
 
-    var S = tok(S0)
-    if(S0.next.atom){
-        if(S.next === "("){
-            var A = parseArgs(tok(S)) // skip open paren
-            S = A[1]
-            return [{struct:true, atom:S0.next.atom, n:A[0].length, args:A[0]}, S]
-        }else{
-            return [{struct:true, atom:S0.next.atom, n:0, args:[]}, S]
-        }
-    }
-    return [S0.next, S]
-}
-
-
-    while(Q.length){
-        var e = Q.shift(), k = exprK(e)
-        if(reg[k]){
-            //console.log("k="+k)
-            continue
-        }else if(e.struct){
-            reg[k] = X++
-            e.args.forEach(term => {console.log("term:",term); Q.push(term)})
-        }else{
-            reg[k] = X++
-        }
-    }
-    console.log(reg, Ftbl)
-    return reg // ignored except for the top-level flatten
+    return regs
 }
 
 function compileQ0_old(expr, regs, seen){
@@ -384,35 +394,32 @@ function unify(i1, i2){
 }
 
 /* TOKENIZER */
+function tokenize(str){
+    return next({str, nexti:0})
+}
+
 var tok_regex = /([a-z][a-z_]*)|([A-Z_][a-z_]*)|([(),])|([ \t]+)|(\n+)/y
-function tok(S0){
+function next(S0){
+    if(S0.peek === null) return S0
+    if(typeof S0.nexti != "number") die("insane")
+    
     var m, S
     S = {str:S0.str, i:S0.nexti, nexti:undefined}
-    if(typeof S0.nexti == "undefined" || S0.nexti >= S0.str.length){
-        S.next = null
-        S.nexti = null
-        return S
-    }
+    if(S0.nexti >= S0.str.length){ S.peek = null; return S }
 
     tok_regex.lastIndex = S0.nexti
     m = tok_regex.exec(S0.str)
     S.nexti = tok_regex.lastIndex
-    if(S.nexti == 0) S.nexti = undefined
-    if(!m){
-        S.next = "unk"
-    }else if(m[1]){
-        S.next = {atom: m[1]}
-    }else if(m[2]){
-        S.next = {var: m[2]}
-    }else if(m[3]){
-        S.next = m[3]
-    }else if(m[4]){
-        return tok(S) // skip whitespace
-    }else if(m[5]){
-        S.next = "endl"
-    }else{
-        throw new Error("internal error")
-    }
+
+    if(!m) S.peek = "unk"
+    else if(m[1]) S.peek = {atom: m[1]}
+    else if(m[2]) S.peek = {var: m[2]}
+    else if(m[3]) S.peek = m[3]
+    else if(m[4]) return next(S) // skip whitespace
+    else if(m[5]) S.peek = null // was "endl"
+    else throw new Error("internal error")
+    
+    console.log("DBG",S)
     return S
 }
 
@@ -421,9 +428,9 @@ function parseArgs(S){
     var A = [], B
 
     while(true){
-        switch(S.next){
+        switch(S.peek){
         case ")":
-            return [A, tok(S)]
+            return [A, next(S)]
         case "(": case null: case "endl": case "unk": case ",":
             throw new Error("syntax error at "+S.i)
         }
@@ -432,8 +439,8 @@ function parseArgs(S){
         S = B[1]
 
         // skip a single comma if it is the next token
-        if(S.next === ","){
-            S = tok(S)
+        if(S.peek === ","){
+            S = next(S)
         }
     }
 }
@@ -450,10 +457,10 @@ function parse2(S0){
         throw new Error("syntax error at "+S0.i)
     }
 
-    var S = tok(S0)
+    var S = next(S0)
     if(S0.next.atom){
-        if(S.next === "("){
-            var A = parseArgs(tok(S)) // skip open paren
+        if(S.peek === "("){
+            var A = parseArgs(next(S)) // skip open paren
             S = A[1]
             return [{struct:true, atom:S0.next.atom, n:A[0].length, args:A[0]}, S]
         }else{
@@ -464,7 +471,7 @@ function parse2(S0){
 }
 
 function parse(str){
-    var S = tok({str:str, nexti:0}) // lookahead one token
+    var S = next({str:str, nexti:0}) // lookahead one token
     var A = parse2(S)
     if(A[1].next !== null){
         console.log(A[1])
