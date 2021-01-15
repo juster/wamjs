@@ -2,8 +2,8 @@
 (function(){
 
 var exports = {
-    parse, reset, dump, prog: compileP0, query: parseQ,
-    exec: exec0, flatten
+    parse, reset, dump, prog: prog0, query: query0,
+    exec: exec0, allocRegs
 }
 
 if(typeof module !== "undefined"){
@@ -205,9 +205,25 @@ function bind(i, j){
 
 /* M0 COMPILER */
 
-function compileQ0(str){
+function query0(str){
+    var expr = parse(str)
     resetRegs()
-    compileQ0_(tokenize(str))
+    return c(expr, allocRegs(expr), {})
+
+    function c(expr, regs, seen){
+        var k = exprK(expr)
+        if(k in seen){
+            Store[C++] = new Cell(SET_VAL, regs[k])
+        }else if(expr.atom){
+            expr.args.forEach(term => {if(term.atom) c(term, regs, seen)})
+            Store[C++] = new Cell(PUT_STRUCT, regs[k])
+            expr.args.forEach(term => c(term, regs, seen))
+            seen[k] = true
+        }else{
+            Store[C++] = new Cell(SET_VAR, regs[k])
+            seen[k] = true
+        }
+    }
 }
 
 function synerr(S){
@@ -257,58 +273,20 @@ function adv(S0, A){
  * Registers are assigned by walking the expression tree in a breadth-first
  * fashion.
  */
-function flatten(str){
-    var S=tokenize(str)
-    var regs=[], tok, toks=[S.peek]
-    resetRegs()
+function allocRegs(expr){
+    var Q1=[expr], A=[], regs={}, k, x, i=0
 
-    console.log("DBG",S)
-
-    while(tok = toks.shift()){
-        switch(tok){ case ",": case "(": case ")": synerr(S) }
-        regs.push(tok)
-        if(tok.atom){
-            /* "(" is only allowed after an atom */
-            S = adv(S, toks)
-            if(toks[0] === "("){
-                toks.shift()
-                S = pclose(S, toks)
-            }
-        }
-        S = adv(S, toks)
+    while(x = Q1.shift()){
+        var k = exprK(x)
+        if(x.var && k in regs) continue
+        if(x.atom) x.args.forEach(term => Q1.push(term))
+        regs[k] = i++
     }
 
     return regs
 }
 
-function compileQ0_old(expr, regs, seen){
-    if(!seen) return compileQ0_(expr, regs, {}) // top-level call
-
-    var Xi = regs[exprK(expr)]
-    if(Xi === undefined) throw new Error("insane")
-    if(seen[Xi]){
-        Store[C++] = new Cell(SET_VAL, Xi)
-    }else if(expr.struct){
-        var fi = findF(expr.atom, expr.n)
-        seen[Xi] = true
-
-        /* Queries place any structure-terms before this structure. */
-        for(var i=0; i<expr.n; i++){
-            if(expr.args[i].struct){
-                compileQ0_(expr.args[i], seen, regs)
-            }
-        }
-        Store[C++] = new Cell(PUT_STRUCT, fi, Xi)
-        for(var i=0; i<expr.n; i++){
-            compileQ0_(expr.args[i], seen)
-        }
-    }else{
-        Store[C++] = new Cell(SET_VAR, Xi)
-        seen[Xi] = true
-    }
-}
-
-function compileP0(s){
+function prog0(s){
     return compileP0_(parse(s), {})
 }
 
@@ -316,35 +294,18 @@ function compileP0_(expr, seen){
     var k = exprK(expr)
     if(k in seen){
         Store[C++] = new Cell(UNI_VAL, seen[k])
-    }else if(expr.struct){
+    }else if(expr.atom){
         var Xi = X++
         var fi = findF(expr.atom, expr.n)
         seen[k] = Xi
         Store[C++] = new Cell(GET_STRUCT, fi, Xi)
-        /* Programs place any structure-terms after this structure. */
+        /* Programs place any terms after this structure. */
         for(var i=0; i<expr.n; i++){
             compileQ0_(expr.args[i], seen)
         }
     }else{
         Store[C++] = new Cell(UNI_VAR, X)
         seen[k] = X++
-    }
-}
-
-function query0(s){
-    var H_ = H
-    try{
-        compileQ0(s)
-        S = Hbot
-        return true
-    }catch(err){
-        if(err instanceof WamFail){
-            return false
-        }else{
-            throw err
-        }
-    }finally{
-        H = H_
     }
 }
 
@@ -394,6 +355,7 @@ function unify(i1, i2){
 }
 
 /* TOKENIZER */
+
 function tokenize(str){
     return next({str, nexti:0})
 }
@@ -419,70 +381,68 @@ function next(S0){
     else if(m[5]) S.peek = null // was "endl"
     else throw new Error("internal error")
     
-    console.log("DBG",S)
     return S
 }
 
 /* PARSER */
-function parseArgs(S){
-    var A = [], B
-
-    while(true){
-        switch(S.peek){
-        case ")":
-            return [A, next(S)]
-        case "(": case null: case "endl": case "unk": case ",":
-            throw new Error("syntax error at "+S.i)
-        }
-        B = parse2(S)
-        A.push(B[0])
-        S = B[1]
-
-        // skip a single comma if it is the next token
-        if(S.peek === ","){
-            S = next(S)
-        }
-    }
-}
-
-function parse2(S0){
-    switch(S0.next){
-    case null: case "endl":
-        return [null,S0]
-    case "ws":
-        throw new Error("internal error")
-    case "unk":
-        throw new Error("unknown char at "+S0.i)
-    case "(": case ")":
-        throw new Error("syntax error at "+S0.i)
-    }
-
-    var S = next(S0)
-    if(S0.next.atom){
-        if(S.peek === "("){
-            var A = parseArgs(next(S)) // skip open paren
-            S = A[1]
-            return [{struct:true, atom:S0.next.atom, n:A[0].length, args:A[0]}, S]
-        }else{
-            return [{struct:true, atom:S0.next.atom, n:0, args:[]}, S]
-        }
-    }
-    return [S0.next, S]
-}
 
 function parse(str){
     var S = next({str:str, nexti:0}) // lookahead one token
     var A = parse2(S)
-    if(A[1].next !== null){
+    if(A[1].peek !== null){
         console.log(A[1])
         throw new Error("input should end at "+A[1].nexti)
     }else{
         return A[0]
     }
+
+    function parse2(S0){
+        switch(S0.peek){
+        case null: case "endl":
+            return [null,S0]
+        case "ws":
+            throw new Error("internal error")
+        case "unk":
+            throw new Error("unknown char at "+S0.i)
+        case "(": case ")":
+            throw new Error("syntax error at "+S0.i)
+        }
+
+        var S = next(S0)
+        if(S0.peek.atom){
+            if(S.peek === "("){
+                var A = parseArgs(next(S)) // skip open paren
+                S = A[1]
+                return [{atom:S0.peek.atom, n:A[0].length, args:A[0]}, S]
+            }else{
+                return [{atom:S0.peek.atom, n:0, args:[]}, S]
+            }
+        }
+        return [S0.peek, S]
+    }
+
+    function parseArgs(S){
+        var A = [], B
+
+        while(true){
+            switch(S.peek){
+            case "(": case ")": case null: case "endl": case "unk": case ",":
+                throw new Error("syntax error at "+S.i)
+            }
+            B = parse2(S)
+            A.push(B[0])
+            S = B[1]
+
+            switch(S.peek){
+            case ")": return [A, next(S)]
+            case ",": S = next(S); break // skip a single comma
+            }
+        }
+    }
 }
 
 function exprK(expr){
-    if(expr.struct){
+    if(expr.atom){
         return "fun#"+findF(expr.atom, expr.n)
     }else if(expr.var){
         return "var#"+expr.var
