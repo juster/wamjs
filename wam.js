@@ -71,15 +71,15 @@ function dump(){
 }
 
 var tagNames = new Map([
-    [STR,"str"],
-    [REF,"ref"],
-    [FUN,"fun"],
-    [PUT_STRUCT,"put_struct"],
-    [SET_VAR,"set_var"],
-    [SET_VAL,"set_val"],
-    [GET_STRUCT,"get_struct"],
-    [UNI_VAR,"uni_var"],
-    [UNI_VAL,"uni_val"]
+    [STR,"STR"],
+    [REF,"REF"],
+    [FUN,"FUN"],
+    [PUT_STRUCT,"PUT_STRUCT"],
+    [SET_VAR,"SET_VAR"],
+    [SET_VAL,"SET_VAL"],
+    [GET_STRUCT,"GET_STRUCT"],
+    [UNI_VAR,"UNI_VAR"],
+    [UNI_VAL,"UNI_VAL"]
 ])
 
 function dumpStr(cell, f){
