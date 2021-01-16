@@ -107,8 +107,8 @@ Cell.prototype.clone = function(){
     return new Cell(this.tag, this.a, this.b)
 }
 
-function wamfail(){ error("wam failure") }
-wamfail.prototype = Object.create({}, Error.prototype)
+function WamFail(){ Error("wam failure") }
+WamFail.prototype = Object.create({}, Error.prototype)
 
 /* m0 interpreter */
 
@@ -121,7 +121,7 @@ function exec0(){
         }
         return true
     }catch(err){
-        if(err instanceof wamfail){
+        if(err instanceof WamFail){
             return false
         }else{
             throw(err)
@@ -174,7 +174,7 @@ function get_structure(fi, xi){
             s = a+1
             readmode = true
         }else{
-            throw new wamfail()
+            throw new WamFail()
         }
     }
 }
@@ -203,7 +203,7 @@ function bind(i, j){
     }else if(Store[j].tag == ref && Store[j].a == j){
         Store[j].a = i
     }else{
-        throw new wamfail()
+        throw new WamFail()
     }
 }
 
@@ -257,22 +257,28 @@ function allocRegs(expr){
 
 function query0(str){
     var expr = parse(str)
-    resetRegs()
-    return c(expr, allocRegs(expr), {})
+    return c(0, allocRegs(expr), {})
 
-    function c(expr, regs, seen){
-        var k = exprK(expr)
-        if(k in seen){
-            Store[C++] = new Cell(SET_VAL, regs[k])
-        }else if(expr.atom){
-            var f = findF(expr.atom, expr.n)
-            expr.args.forEach(term => {if(term.atom) c(term, regs, seen)})
-            Store[C++] = new Cell(PUT_STRUCT, f, regs[k])
-            expr.args.forEach(term => c(term, regs, seen))
-            seen[k] = true
+    function c(i, regs, seen){
+        var atom
+        if(i in seen){
+            Store[C++] = new Cell(SET_VAL, i)
+        }else if(Array.isArray(regs[i])){
+            seen[i] = true
+            var atom = regs[i][0]
+            var f = findF(atom, regs[i].length-1)
+            for(var j=1; j<regs[i].length; j++){
+                var k = regs[i][j]
+                if(Array.isArray(regs[k])) c(k, regs, seen)
+            }
+            Store[C++] = new Cell(PUT_STRUCT, f, i)
+            for(var j=1; j<regs[i].length; j++){
+                var k = regs[i][j]
+                /*if(!Array.isArray(regs[k]))*/ c(k, regs, seen)
+            }
         }else{
-            Store[C++] = new Cell(SET_VAR, regs[k])
-            seen[k] = true
+            seen[i] = true
+            Store[C++] = new Cell(SET_VAR, i)
         }
     }
 }
