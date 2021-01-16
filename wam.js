@@ -50,22 +50,22 @@ function reset(){
     S = H, P = C
 }
 
-function resetregs(){
-    Store.fill(undefined, xbot, x)
-    x = xbot
+function resetRegs(){
+    Store.fill(undefined, Xbot, X)
+    X = Xbot
 }
 
 function dump(){
     var i
     //if(x == 0) console.log("(empty)")
     var frev = []
-    for(i=0;i<fn;i++){
-        for(var f in ftbl) if(ftbl[f] == i){ frev.push(f); break }
+    for(i=0;i<Fn;i++){
+        for(var f in Ftbl) if(Ftbl[f] == i){ frev.push(f); break }
     }
-    if(x == 0 && h == hbot) console.log("(empty)")
+    if(X == 0 && H == Hbot) console.log("(empty)")
     //for(i=0; i<x; i++) console.log(i, dumpStr(Store[i], frev))
-    for(i=cbot; i<c; i++) console.log(i, dumpStr(Store[i], frev))
-    for(i=hbot; i<h; i++) console.log(i, dumpStr(Store[i], frev))
+    for(i=Cbot; i<C; i++) console.log(i, dumpStr(Store[i], frev))
+    for(i=Hbot; i<H; i++) console.log(i, dumpStr(Store[i], frev))
 
     for(i=0;i<frev.length;i++) console.log(i, frev[i])
 }
@@ -85,26 +85,26 @@ var tagNames = new Map([
 function dumpStr(cell, f){
     var str = tagNames.get(cell.tag) +" "+ cell.a
     if(cell.b !== undefined) str += ", "+ cell.b
-    if(cell.tag == fun) str += " ("+f[cell.a]+")"
+    if(cell.tag == FUN) str += " ("+f[cell.a]+")"
     return str
 }
 
-function findf(f, n){
+function findF(f, n){
     var k = f+"/"+n
-    if(k in ftbl){
-        return ftbl[k]
+    if(k in Ftbl){
+        return Ftbl[k]
     }else{
-        return ftbl[k] = fn++
+        return Ftbl[k] = Fn++
     }
 }
 
 /* a simulated memory cell */
-function cell(tag, a, b){
+function Cell(tag, a, b){
     if(typeof tag != "number"){ die("invalid tag") }
     this.tag=tag, this.a=a, this.b=b // a,b may be undefined
 }
-cell.prototype.clone = function(){
-    return new cell(this.tag, this.a, this.b)
+Cell.prototype.clone = function(){
+    return new Cell(this.tag, this.a, this.b)
 }
 
 function wamfail(){ error("wam failure") }
