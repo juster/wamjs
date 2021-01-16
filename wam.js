@@ -444,14 +444,4 @@ function parse(str){
     }
 }
 
-function exprK(expr){
-    if(expr.atom){
-        return "fun#"+findF(expr.atom, expr.n)
-    }else if(expr.var){
-        return "var#"+expr.var
-    }else{
-        die("unknown expr")
-    }
-}
-
 })() // end module
