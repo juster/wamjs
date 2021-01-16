@@ -265,13 +265,13 @@ function query0(str){
             Store[C++] = new Cell(SET_VAL, i)
         }else if(Array.isArray(regs[i])){
             seen[i] = true
-            var atom = regs[i][0]
-            var f = findF(atom, regs[i].length-1)
             for(var j=1; j<regs[i].length; j++){
                 var k = regs[i][j]
                 if(Array.isArray(regs[k])) c(k, regs, seen)
             }
-            Store[C++] = new Cell(PUT_STRUCT, f, i)
+            var atom = regs[i][0]
+            var n = regs[i].length-1
+            Store[C++] = new Cell(PUT_STRUCT, findF(atom, n), i)
             for(var j=1; j<regs[i].length; j++){
                 var k = regs[i][j]
                 /*if(!Array.isArray(regs[k]))*/ c(k, regs, seen)
@@ -285,31 +285,29 @@ function query0(str){
 
 function prog0(str){
     var expr = parse(str)
-    resetRegs()
-    var regs = allocRegs(expr)
-    console.log(regs)
-    return c(expr, regs, {})
+    return c(0, allocRegs(expr), {})
 
-    function c(expr, regs, seen){
-        var k = exprK(expr)
-        if(expr.atom){
-            seen[k] = true
-            var f = findF(expr.atom, expr.n)
-            Store[C++] = new Cell(GET_STRUCT, f, regs[k])
-            expr.args.forEach(term => {
-                var k2 = exprK(term)
-                if(k2 in seen){
-                    Store[C++] = new Cell(UNI_VAL, regs[k2])
+    function c(i, regs, seen){
+        if(Array.isArray(regs[i])){
+            seen[i] = true
+            var term = regs[i], atom = term[0], n = regs[i].length-1
+            Store[C++] = new Cell(GET_STRUCT, findF(atom, n), i)
+            for(var j=1; j<term.length; j++){
+                if(seen[term[j]]){
+                    Store[C++] = new Cell(UNI_VAL, term[j])
                 }else{
-                    Store[C++] = new Cell(UNI_VAR, regs[k2])
+                    Store[C++] = new Cell(UNI_VAR, term[j])
                 }
-            })
-            expr.args.forEach(term => {if(term.atom) c(term, regs, seen)})
-        }else if(k in seen){
-            Store[C++] = new Cell(UNI_VAL, regs[k])
+            }
+            for(var j=1; j<term.length; j++){
+                var k = term[j]
+                if(Array.isArray(regs[k])) c(k, regs, seen)
+            }
+        }else if(seen[i]){
+            Store[C++] = new Cell(UNI_VAL, i)
         }else{
-            Store[C++] = new Cell(UNI_VAR, regs[k])
-            seen[k] = true
+            Store[C++] = new Cell(UNI_VAR, i)
+            seen[i] = true
         }
     }
 }
