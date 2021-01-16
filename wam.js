@@ -23,7 +23,7 @@ const Xtop = 128, Cbot = Xtop
 var C // code ptr
 const Ctop = Xtop+128, Hbot = Ctop
 var H // heap ptr
-var ModeRd // true=read false=write
+var ReadMode // true=read false=write
 var S // address of next subterm to be matched
 var Labels = {}
 var P // instruction counter
@@ -142,65 +142,65 @@ var m0 = new Map([
     [UNI_VAL, unify_value]
 ])
 
-function put_structure(fi, xi){
-    Store[xi] = Store[h] = new cell(str, h+1)
-    Store[h+1] = new cell(fun, fi)
+function put_structure(fi, Xi){
+    Store[Xi] = Store[h] = new Cell(STR, H+1)
+    Store[h+1] = new Cell(FUN, Fi)
     h+=2
 }
 
-function set_variable(xi){
-    Store[xi] = Store[h] = new cell(ref, h), h++
+function set_variable(Xi){
+    Store[Xi] = Store[H] = new Cell(REF, H); H++
 }
 
-function set_value(xi){
-    Store[h++] = Store[xi].clone()
+function set_value(Xi){
+    Store[H++] = Store[Xi].clone()
 }
 
-function get_structure(fi, xi){
-    if(!readmode) return put_structure(fi, xi)
+function get_structure(fi, Xi){
+    if(!ReadMode) return put_structure(fi, Xi)
 
-    var addr = deref(Store[xi].a)
+    var addr = deref(Store[Xi].a)
     var cell = Store[addr]
     switch(cell.tag){
-    case ref:
-        Store[h+0] = new cell(str, h+1)
-        Store[h+1] = new cell(fun, f, n)
-        bind(addr, h)
-        h+=2
-        readmode = false
-    case str:
+    case REF:
+        Store[H+0] = new Cell(STR, H+1)
+        Store[H+1] = new Cell(FUN, fi)
+        bind(addr, H)
+        H+=2
+        ReadMode = false
+    case STR:
         var a = cell.a
         if(Store[a].a == fi){
-            s = a+1
-            readmode = true
+            S = a+1
+            ReadMode = true
         }else{
             throw new WamFail()
         }
     }
 }
 
-function unify_variable(xi){
-    if(readmode){
-        Store[xi] = Store[s]
+function unify_variable(Xi){
+    if(ReadMode){
+        Store[Xi] = Store[S]
     }else{
-        Store[xi] = Store[h] = new cell(ref, h)
-        h++
+        Store[Xi] = Store[H] = new Cell(REF, H)
+        H++
     }
-    s++
+    S++
 }
 
-function unify_value(xi){
-    if(readmode){
-        unify(xi, s++)
+function unify_value(Xi){
+    if(ReadMode){
+        unify(Xi, S++)
     }else{
-        Store[h++] = Store[xi].clone()
+        Store[H++] = Store[Xi].clone()
     }
 }
 
 function bind(i, j){
-    if(Store[i].tag == ref && Store[i].a == i){
+    if(Store[i].tag == REF && Store[i].a == i){
         Store[i].a = j
-    }else if(Store[j].tag == ref && Store[j].a == j){
+    }else if(Store[j].tag == REF && Store[j].a == j){
         Store[j].a = i
     }else{
         throw new WamFail()
@@ -256,6 +256,9 @@ function allocRegs(expr){
 }
 
 function query0(str){
+    if(H == Hbot){
+        die("no program")
+    }
     var expr = parse(str)
     return c(0, allocRegs(expr), {})
 
