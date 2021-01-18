@@ -56,18 +56,17 @@ function resetRegs(){
 }
 
 function dump(){
-    var i
-    //if(x == 0) console.log("(empty)")
-    var frev = []
+    var i, Frev = []
     for(i=0;i<Fn;i++){
-        for(var f in Ftbl) if(Ftbl[f] == i){ frev.push(f); break }
+        for(var f in Ftbl) if(Ftbl[f] == i){ Frev.push(f); break }
     }
-    if(X == 0 && H == Hbot) console.log("(empty)")
-    //for(i=0; i<x; i++) console.log(i, dumpStr(Store[i], frev))
-    for(i=Cbot; i<C; i++) console.log(i, dumpStr(Store[i], frev))
-    for(i=Hbot; i<H; i++) console.log(i, dumpStr(Store[i], frev))
 
-    for(i=0;i<frev.length;i++) console.log(i, frev[i])
+    if(X == 0 && H == Hbot) console.log("(empty)")
+    //for(i=0; i<x; i++) console.log(i, dumpStr(Store[i], Frev))
+    for(i=Cbot; i<C; i++) console.log(i, dumpStr(Store[i], Frev))
+    for(i=Hbot; i<H; i++) console.log(i, dumpStr(Store[i], Frev))
+
+    for(i=0;i<Frev.length;i++) console.log(i, Frev[i])
 }
 
 var tagNames = new Map([
