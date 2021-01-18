@@ -56,13 +56,10 @@ function resetRegs(){
 }
 
 function dump(){
-    var i, Frev = []
-    for(i=0;i<Fn;i++){
-        for(var f in Ftbl) if(Ftbl[f] == i){ Frev.push(f); break }
-    }
+    var i, Frev = reverseF()
 
-    if(X == 0 && H == Hbot) console.log("(empty)")
-    //for(i=0; i<x; i++) console.log(i, dumpStr(Store[i], Frev))
+    if(X == Xbot && C == Cbot && H == Hbot) console.log("(empty)")
+    for(i=0; i<X; i++) console.log(i, dumpStr(Store[i], Frev))
     for(i=Cbot; i<C; i++) console.log(i, dumpStr(Store[i], Frev))
     for(i=Hbot; i<H; i++) console.log(i, dumpStr(Store[i], Frev))
 
@@ -82,9 +79,15 @@ var tagNames = new Map([
 ])
 
 function dumpStr(cell, f){
+    if(f === undefined) f = reverseF()
+    if(cell === undefined) return "undefined"
+
     var str = tagNames.get(cell.tag) +" "+ cell.a
     if(cell.b !== undefined) str += ", "+ cell.b
-    if(cell.tag == FUN) str += " ("+f[cell.a]+")"
+    switch(cell.tag){
+    case GET_STRUCT: case PUT_STRUCT: case FUN:
+        str += " ("+f[cell.a]+")"
+    }
     return str
 }
 
@@ -95,6 +98,14 @@ function findF(f, n){
     }else{
         return Ftbl[k] = Fn++
     }
+}
+
+function reverseF(){
+    var Frev = []
+    for(var i=0;i<Fn;i++){
+        for(var f in Ftbl) if(Ftbl[f] == i){ Frev.push(f); break }
+    }
+    return Frev
 }
 
 /* a simulated memory cell */
@@ -116,7 +127,7 @@ function exec0(beg, end){
     var H_ = H
     try{
         for(var i=beg; i<end; i++){
-            console.log("*exec*", dumpStr(Store[i]))
+            console.log("*exec*", "S="+S, dumpStr(Store[i]))
             var f = M0.get(Store[i].tag)
             f(Store[i].a, Store[i].b)
         }
@@ -128,7 +139,7 @@ function exec0(beg, end){
             throw(err)
         }
     }finally{
-        H = H_
+        //H = H_
     }
 }
 
@@ -165,6 +176,7 @@ function get_structure(fi, Xi){
 
     var addr = deref(Store[Xi].a)
     var cell = Store[addr]
+    console.log("*get_struct*", dumpStr(cell))
     switch(cell.tag){
     case REF:
         Store[H+0] = new Cell(STR, H+1)
@@ -172,6 +184,8 @@ function get_structure(fi, Xi){
         bind(addr, H)
         H+=2
         ReadMode = false
+        console.log("*DBG*", "write mode")
+        break
     case STR:
         var a = cell.a
         if(Store[a].a == fi){
@@ -180,6 +194,9 @@ function get_structure(fi, Xi){
         }else{
             throw new WamFail()
         }
+        break
+    default:
+        die("insane")
     }
 }
 
@@ -196,10 +213,11 @@ function unify_variable(Xi){
 
 function unify_value(Xi){
     if(ReadMode){
-        unify(Xi, S++)
+        unify(Xi, S)
     }else{
         Store[H++] = Store[Xi].clone()
     }
+    S++
 }
 
 function bind(i, j){
@@ -221,7 +239,8 @@ function bind(i, j){
  * fashion.
  */
 function allocRegs(expr){
-    var regs=[], todo=[expr,0], n=1
+    var regs=[], todo=[expr,0]
+    X=1
 
     while(expr = todo.shift()){
         alloc(expr, todo.shift())
@@ -235,8 +254,8 @@ function allocRegs(expr){
         }else if((j = regs.indexOf(expr.var)) >= 0){
             return j
         }else{
-            regs[n] = expr.var
-            return n++
+            regs[X] = expr.var
+            return X++
         }
     }
 
@@ -244,13 +263,13 @@ function allocRegs(expr){
         var j
         if(term.atom){
             // reserve space for arguments
-            var args = term.args.map(x => {
-                if(x.atom){
-                    todo.push(x)
-                    todo.push(n)
-                    return n++
+            var args = term.args.map(t => {
+                if(t.atom){
+                    todo.push(t)
+                    todo.push(X)
+                    return X++
                 }else{
-                    return v(x)
+                    return v(t)
                 }
             })
             regs[i] = [term.atom].concat(args)
@@ -262,15 +281,17 @@ function allocRegs(expr){
 
 function query0(str){
     var expr = parse(str)
-    var C_ = C
+    var C_ = C, H_ = H
     try{
         c(0, allocRegs(expr), {})
-        dump()
+        S = H
         exec0(C_, C)
-        S = C_
+        dump()
+        ReadMode = true
+        console.log("executing prog")
         return exec0(Cbot, C_)
     }finally{
-        C = C_
+        C = C_, H = H_
     }
 
     function c(i, regs, seen){
@@ -298,8 +319,8 @@ function query0(str){
 }
 
 function prog0(str){
-    var expr = parse(str)
-    return c(0, allocRegs(expr), {})
+    c(0, allocRegs(parse(str)), {})
+    dump()
 
     function c(i, regs, seen){
         if(Array.isArray(regs[i])){
@@ -329,7 +350,8 @@ function prog0(str){
 
 function deref(a){
     var i
-    for(var i=a, cell=Store[i]; cell.tag==REF && cell.a != i; i=cell.a){
+    for(var i=a, cell=Store[i]; cell.tag==REF; i=cell.a){
+        if(cell.a == i) break
         console.log("*deref* i="+i)
     }
     return i
@@ -339,6 +361,7 @@ function deref(a){
 function unify(i1, i2){
     var S = [i1, i2]
     while(S.length > 0){
+        console.log("*unify*", S, d1, d2)
         var d1 = deref(S.pop()), d2 = deref(S.pop())
         if(d1 == d2) continue
 
