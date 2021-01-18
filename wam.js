@@ -17,8 +17,8 @@ if(typeof module !== "undefined"){
 }
 
 var Store = new Array(1024) // simulates main memory
-const Xbot = 1
-var X // register ptr
+const Xbot = 0
+var X = Xbot // register ptr
 const Xtop = 128, Cbot = Xtop
 var C // code ptr
 const Ctop = Xtop+128, Hbot = Ctop
@@ -59,7 +59,7 @@ function dump(){
     var i, Frev = reverseF()
 
     if(X == Xbot && C == Cbot && H == Hbot) console.log("(empty)")
-    for(i=0; i<X; i++) console.log(i, dumpStr(Store[i], Frev))
+    for(i=Xbot; i<X; i++) console.log(i, dumpStr(Store[i], Frev))
     for(i=Cbot; i<C; i++) console.log(i, dumpStr(Store[i], Frev))
     for(i=Hbot; i<H; i++) console.log(i, dumpStr(Store[i], Frev))
 
