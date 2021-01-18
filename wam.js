@@ -174,7 +174,7 @@ function set_value(Xi){
 function get_structure(fi, Xi){
     if(!ReadMode) return put_structure(fi, Xi)
 
-    var addr = deref(Store[Xi].a)
+    var addr = deref(Xi)
     var cell = Store[addr]
     console.log("*get_struct*", dumpStr(cell))
     switch(cell.tag){
