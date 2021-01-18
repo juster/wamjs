@@ -58,12 +58,22 @@ function resetRegs(){
 function dump(){
     var i, Frev = reverseF()
 
-    if(X == Xbot && C == Cbot && H == Hbot) console.log("(empty)")
-    for(i=Xbot; i<X; i++) console.log(i, dumpStr(Store[i], Frev))
+    console.log("CODE")
     for(i=Cbot; i<C; i++) console.log(i, dumpStr(Store[i], Frev))
+    if(C == Cbot) console.log("(empty)")
+    console.log("HEAP")
+    if(H == Hbot) console.log("(empty)")
     for(i=Hbot; i<H; i++) console.log(i, dumpStr(Store[i], Frev))
-
+    console.log("FUNCTORS")
+    if(Frev.length == 0) console.log("(empty)")
     for(i=0;i<Frev.length;i++) console.log(i, Frev[i])
+}
+
+function dumpRegs(){
+    var Frev = reverseF()
+    console.log("REGISTERS")
+    if(X == Xbot) console.log("(empty)")
+    for(var i=Xbot; i<X; i++) console.log(i, dumpStr(Store[i], Frev))
 }
 
 var tagNames = new Map([
@@ -287,6 +297,7 @@ function query0(str){
         S = H
         exec0(C_, C)
         dump()
+        dumpRegs()
         ReadMode = true
         console.log("executing prog")
         return exec0(Cbot, C_)
