@@ -112,11 +112,13 @@ WamFail.prototype = Object.create({}, Error.prototype)
 
 /* m0 interpreter */
 
-function exec0(){
-    var h0 = h
+function exec0(beg, end){
+    ReadMode = true
+    var H_ = H
     try{
-        for(var i=cbot; i<c; i++){
-            var f = m0.get(Store[i].tag)
+        for(var i=beg; i<end; i++){
+            console.log("*exec*", dumpStr(Store[i]))
+            var f = M0.get(Store[i].tag)
             f(Store[i].a, Store[i].b)
         }
         return true
@@ -127,11 +129,11 @@ function exec0(){
             throw(err)
         }
     }finally{
-        //h = h0
+        H = H_
     }
 }
 
-var m0 = new Map([
+var M0 = new Map([
     /* query instructions */
     [PUT_STRUCT, put_structure],
     [SET_VAR, set_variable],
@@ -143,13 +145,16 @@ var m0 = new Map([
 ])
 
 function put_structure(fi, Xi){
-    Store[Xi] = Store[h] = new Cell(STR, H+1)
-    Store[h+1] = new Cell(FUN, Fi)
-    h+=2
+    Store[H] = new Cell(STR, H+1)
+    Store[H+1] = new Cell(FUN, fi)
+    Store[Xi] = Store[H].clone()
+    H+=2
 }
 
 function set_variable(Xi){
-    Store[Xi] = Store[H] = new Cell(REF, H); H++
+    Store[H] = new Cell(REF, H)
+    Store[Xi] = Store[H].clone()
+    H++
 }
 
 function set_value(Xi){
@@ -181,9 +186,10 @@ function get_structure(fi, Xi){
 
 function unify_variable(Xi){
     if(ReadMode){
-        Store[Xi] = Store[S]
+        Store[Xi] = Store[S].clone()
     }else{
-        Store[Xi] = Store[H] = new Cell(REF, H)
+        Store[H] = new Cell(REF, H)
+        Store[Xi] = Store[H].clone()
         H++
     }
     S++
@@ -256,11 +262,17 @@ function allocRegs(expr){
 }
 
 function query0(str){
-    if(H == Hbot){
-        die("no program")
-    }
     var expr = parse(str)
-    return c(0, allocRegs(expr), {})
+    var C_ = C
+    try{
+        c(0, allocRegs(expr), {})
+        dump()
+        exec0(C_, C)
+        S = C_
+        return exec0(Cbot, C_)
+    }finally{
+        C = C_
+    }
 
     function c(i, regs, seen){
         var atom
@@ -300,6 +312,7 @@ function prog0(str){
                     Store[C++] = new Cell(UNI_VAL, term[j])
                 }else{
                     Store[C++] = new Cell(UNI_VAR, term[j])
+                    seen[term[j]] = true
                 }
             }
             for(var j=1; j<term.length; j++){
@@ -315,18 +328,12 @@ function prog0(str){
     }
 }
 
-function deref(i){
-    while(true){
-        console.log("*DBG* i="+i)
-        var cell = Store[i]
-        if(cell.tag != REF){
-            return i
-        }else if(cell.a == i){
-            return i
-        }else{
-            i = cell.a
-        }
+function deref(a){
+    var i
+    for(var i=a, cell=Store[i]; cell.tag==REF && cell.a != i; i=cell.a){
+        console.log("*deref* i="+i)
     }
+    return i
 }
 
 /* "... a unification algorithm based on the UNION/FIND method [AHU74] ..." */
